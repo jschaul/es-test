@@ -1,0 +1,4 @@
+- src: git+https://github.com/elastic/ansible-elasticsearch.git
+  name: elasticsearch
+  version: "6.4.0" # 2018-08-28
+
