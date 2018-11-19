@@ -41,7 +41,9 @@
       http.port: "{{ es_api_port }}" # 9200 by default
       transport.tcp.port: 9300
       discovery.zen.ping.unicast.hosts: "{{ es_masters }}"
-      network.host: '_site_'
+      # see https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-network.html
+      network.publish_host: '_site_'
+      network.bind_host: ['_site_', '_local_']
       node.data: false
       node.master: true
 
@@ -88,8 +90,8 @@
       http.port: "{{ es_api_port }}" # 9200 by default
       transport.tcp.port: 9300
       discovery.zen.ping.unicast.hosts: "{{ es_masters }}"
-      network.host: '_site_'
+      # see https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-network.html
+      network.publish_host: '_site_'
+      network.bind_host: ['_site_', '_local_']
       node.data: true
       node.master: false
-
-
