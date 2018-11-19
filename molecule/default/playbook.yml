@@ -34,18 +34,62 @@
   vars:
     es_enable_xpack: false
     es_xpack_features: [] # disable features
-    es_version_lock: false
-    es_templates: false
-    es_scripts: false
     es_instance_name: "{{ ansible_hostname }}"
     es_masters: '{% for host in groups["elasticsearch_master"] %}{{ hostvars[host]["ansible_default_ipv4"]["address"] }}:9300{% if not loop.last %},{% endif %}{% endfor %}'
     es_config:
       cluster.name: "elasticsearch-directory"
-      http.port: 9200
+      http.port: "{{ es_api_port }}" # 9200 by default
       transport.tcp.port: 9300
       discovery.zen.ping.unicast.hosts: "{{ es_masters }}"
       network.host: '_site_'
       node.data: false
       node.master: true
+
+
+- name: Converge
+  hosts: elasticsearch_data
+  pre_tasks:
+    - name: Ensure apt cache is updated
+      apt:
+        update_cache: true
+      changed_when: false
+      when: ansible_os_family == 'Debian'
+
+    # needed for the 'ip' command to populate 'ansible_default_ipv4'
+    - name: install iproute2
+      apt:
+        name: iproute2
+        state: present
+      when: ansible_os_family == 'Debian' and ansible_default_ipv4 is not defined
+
+    - name: populate 'ansible_default_ipv4'
+      setup:
+      when: ansible_default_ipv4 is not defined
+
+    - debug: var=es_config
+
+      # required for openjdk
+      # see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=863199
+    - name: ensure man directory exist
+      file:
+        path: /usr/share/man/man1
+        state: directory
+        mode: 0755
+
+  roles:
+    - role: elasticsearch
+  vars:
+    es_enable_xpack: false
+    es_xpack_features: [] # disable features
+    es_instance_name: "{{ ansible_hostname }}"
+    es_masters: '{% for host in groups["elasticsearch_master"] %}{{ hostvars[host]["ansible_default_ipv4"]["address"] }}:9300{% if not loop.last %},{% endif %}{% endfor %}'
+    es_config:
+      cluster.name: "elasticsearch-directory"
+      http.port: "{{ es_api_port }}" # 9200 by default
+      transport.tcp.port: 9300
+      discovery.zen.ping.unicast.hosts: "{{ es_masters }}"
+      network.host: '_site_'
+      node.data: true
+      node.master: false
 
 
