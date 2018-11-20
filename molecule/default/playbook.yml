@@ -1,36 +1,16 @@
 ---
+# Set up a 3-node elasticsearch cluster where all nodes are both elegible master nodes and data nodes.
+# This is the cheapest HA-cluster.
+# For better performance on higher load, 3 master, 2 data, 2 coordinating is suggested.
+# See:
+# https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-node.html
+# https://discuss.elastic.co/t/help-with-elasticsearch-cluster/132885/4
+#
+# Uses default data directory: /var/lib/elasticsearch - should this be changed?
+#
 - name: Converge
-  hosts: elasticsearch_master
-  pre_tasks:
-    - name: Ensure apt cache is updated
-      apt:
-        update_cache: true
-      changed_when: false
-      when: ansible_os_family == 'Debian'
-
-    # needed for the 'ip' command to populate 'ansible_default_ipv4'
-    - name: install iproute2
-      apt:
-        name: iproute2
-        state: present
-      when: ansible_os_family == 'Debian' and ansible_default_ipv4 is not defined
-
-    - name: populate 'ansible_default_ipv4'
-      setup:
-      when: ansible_default_ipv4 is not defined
-
-    - debug: var=es_config
-
-      # required for openjdk
-      # see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=863199
-    - name: ensure man directory exist
-      file:
-        path: /usr/share/man/man1
-        state: directory
-        mode: 0755
-
-  roles:
-    - role: elasticsearch
+  hosts: elasticsearch
+  gather_facts: false # there are sometimes timeouts here, gather subset of facts below in pre_tasks instead.
   vars:
     es_enable_xpack: false
     es_xpack_features: [] # disable features
@@ -40,58 +20,58 @@
       cluster.name: "elasticsearch-directory"
       http.port: "{{ es_api_port }}" # 9200 by default
       transport.tcp.port: 9300
+      # minimum master nodes should be a quorum of eligible master nodes (e.g. for 3 nodes: 3 / 2 + 1 = 2)
+      # (//) is python's integer division
+      discovery.zen.minimum_master_nodes: "{{ (groups['elasticsearch_master'] | length // 2 + 1) | int }}"
       discovery.zen.ping.unicast.hosts: "{{ es_masters }}"
-      # see https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-network.html
-      network.publish_host: '_site_'
-      network.bind_host: ['_site_', '_local_']
-      node.data: false
-      node.master: true
-
-
-- name: Converge
-  hosts: elasticsearch_data
-  pre_tasks:
-    - name: Ensure apt cache is updated
-      apt:
-        update_cache: true
-      changed_when: false
-      when: ansible_os_family == 'Debian'
-
-    # needed for the 'ip' command to populate 'ansible_default_ipv4'
-    - name: install iproute2
-      apt:
-        name: iproute2
-        state: present
-      when: ansible_os_family == 'Debian' and ansible_default_ipv4 is not defined
-
-    - name: populate 'ansible_default_ipv4'
-      setup:
-      when: ansible_default_ipv4 is not defined
-
-    - debug: var=es_config
-
-      # required for openjdk
-      # see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=863199
-    - name: ensure man directory exist
-      file:
-        path: /usr/share/man/man1
-        state: directory
-        mode: 0755
-
-  roles:
-    - role: elasticsearch
-  vars:
-    es_enable_xpack: false
-    es_xpack_features: [] # disable features
-    es_instance_name: "{{ ansible_hostname }}"
-    es_masters: '{% for host in groups["elasticsearch_master"] %}{{ hostvars[host]["ansible_default_ipv4"]["address"] }}:9300{% if not loop.last %},{% endif %}{% endfor %}'
-    es_config:
-      cluster.name: "elasticsearch-directory"
-      http.port: "{{ es_api_port }}" # 9200 by default
-      transport.tcp.port: 9300
-      discovery.zen.ping.unicast.hosts: "{{ es_masters }}"
+      # bind to both site IP and localhost, but publish only site IP:
+      # netstat -antlp | grep LISTEN
+      #   tcp        0      0 172.17.0.4:9200         0.0.0.0:*               LISTEN      8663/java
+      #   tcp        0      0 127.0.0.1:9200          0.0.0.0:*               LISTEN      8663/java
+      #   tcp        0      0 172.17.0.4:9300         0.0.0.0:*               LISTEN      8663/java
+      #   tcp        0      0 127.0.0.1:9300          0.0.0.0:*               LISTEN      8663/java
+      # curl localhost:9200/_cat/nodes?v
+      #   ip         heap.percent ram.percent cpu load_1m load_5m load_15m node.role master name
+      #   172.17.0.4           12          76 100    6.50    6.52     7.20 mdi       *      es3-es3
+      #   172.17.0.2           11          76 100    6.50    6.52     7.20 mdi       -      es1-es1
+      #   172.17.0.3           11          76 100    6.50    6.52     7.20 mdi       -      es2-es2
+      # for more details see
       # see https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-network.html
       network.publish_host: '_site_'
       network.bind_host: ['_site_', '_local_']
       node.data: true
-      node.master: false
+      node.master: true
+  pre_tasks:
+    - set_fact:
+        ansible_os_family: Debian
+    - name: Ensure apt cache is updated
+      apt:
+        update_cache: true
+      changed_when: false
+      when: ansible_os_family == 'Debian'
+
+    # needed for the 'ip' command to populate 'ansible_default_ipv4'
+    - name: install iproute2
+      apt:
+        name: iproute2
+        state: present
+      when: ansible_os_family == 'Debian' and ansible_default_ipv4 is not defined
+
+    - name: populate 'ansible_default_ipv4'
+      setup:
+        gather_timeout: 30
+        gather_subset: "!all,network"
+      when: ansible_default_ipv4 is not defined
+
+    - debug: var=es_config
+
+      # required for openjdk
+      # see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=863199
+    - name: ensure man directory exist
+      file:
+        path: /usr/share/man/man1
+        state: directory
+        mode: 0755
+
+  roles:
+    - role: elasticsearch

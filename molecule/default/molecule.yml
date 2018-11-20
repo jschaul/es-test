@@ -9,6 +9,7 @@ platforms:
   - name: es1
     # for systemd, use these base images:
     image: "geerlingguy/docker-${MOLECULE_DISTRO:-ubuntu1604}-ansible:latest"
+    pre_build_image: true
     command: ${MOLECULE_DOCKER_COMMAND:-""}
     networks_mode: host
     volumes:
@@ -18,10 +19,11 @@ platforms:
     groups:
       - elasticsearch
       - elasticsearch_master
-    pre_build_image: true
+      - elasticsearch_data
   - name: es2
     # for systemd, use these base images:
     image: "geerlingguy/docker-${MOLECULE_DISTRO:-ubuntu1604}-ansible:latest"
+    pre_build_image: true
     command: ${MOLECULE_DOCKER_COMMAND:-""}
     networks_mode: host
     volumes:
@@ -30,8 +32,22 @@ platforms:
     privileged: true  # for systemd
     groups:
       - elasticsearch
+      - elasticsearch_master
       - elasticsearch_data
+  - name: es3
+    # for systemd, use these base images:
+    image: "geerlingguy/docker-${MOLECULE_DISTRO:-ubuntu1604}-ansible:latest"
     pre_build_image: true
+    command: ${MOLECULE_DOCKER_COMMAND:-""}
+    networks_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro  # for systemd
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro  # for ntp/timedatectl
+    privileged: true  # for systemd
+    groups:
+      - elasticsearch
+      - elasticsearch_master
+      - elasticsearch_data
 provisioner:
   name: ansible
   lint:
